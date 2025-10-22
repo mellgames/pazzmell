@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>PuzzMell</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+body { 
+    margin: 0; 
+    background: #222; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    height: 100vh; 
+    font-family: Arial, sans-serif;
+}
+#container { 
+    width: 100%; 
+    height: 100%; 
+    position: relative;
+}
+
+.upload-container {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    z-index: 1000;
+}
+
+.upload-button {
+    background: linear-gradient(135deg, #6e8efb, #a777e3);
+    color: white;
+    padding: 12px 20px;
+    border: none;
+    border-radius: 25px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.upload-button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+    background: linear-gradient(135deg, #5d7dfa, #9666e0);
+}
+
+.upload-button:active {
+    transform: translateY(0);
+}
+
+.upload-button i {
+    font-size: 16px;
+}
+
+#uploadInput {
+    display: none;
+}
+
+.timer-container {
+    position: absolute;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 10px 20px;
+    border-radius: 20px;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.timer-text {
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+    margin: 0;
+}
+
+.preview-container {
+    position: absolute;
+    top: 80px;
+    left: 20px;
+    z-index: 999;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 10px;
+    backdrop-filter: blur(5px);
+}
+
+.preview-image {
+    max-width: 150px;
+    max-height: 150px;
+    border-radius: 5px;
+    display: block;
+}
+
+.preview-text {
+    color: white;
+    font-size: 12px;
+    text-align: center;
+    margin: 5px 0 0 0;
+}
+</style>
+</head>
+<body>
+
+<div class="upload-container">
+    <button class="upload-button" onclick="document.getElementById('uploadInput').click()">
+        <i>📁</i> Загрузить пазл
+    </button>
+    <input type="file" id="uploadInput" accept="image/*">
+</div>
+
+<div class="timer-container">
+    <p class="timer-text" id="timerText">Осталось 0 сек</p>
+</div>
+
+<div id="container"></div>
+
+<script src="phaser.min.js"></script>
+<script>
+var levels = [
+  { grid: 3, time: 60, pieceSize: 184 }, 
+  { grid: 4, time: 120, pieceSize: 138 }, 
+  { grid: 5, time: 180, pieceSize: 110 }  
+];
+
+var currentLevel = 0;
+var customImage = null;
+var currentImage = 'assets/img/default-puzzle.jpg'; 
+
+var sort = [];
+var temPosition = {};
+var pintuGroup;
+var allowDragStart = true;
+var allowDragStop = false;
+
+var game = new Phaser.Game(window.innerWidth, window.innerHeight, Phaser.CANVAS, 'container');
+
+game.States = {};
+
+game.States.main = function() {
+  this.preload = function() {
+    var lvl = levels[currentLevel];
+    
+
+    game.load.image('puzzleImage', currentImage);
+    
+    game.load.image('panel', 'assets/img/panel.png');
+    game.load.audio('happy', 'assets/sound/happy.mp3');
+    game.load.audio('sad', 'assets/sound/sad.mp3');
+    game.load.audio('win', 'assets/sound/win.mp3');
+  };
+
+  this.create = function() {
+    var lvl = levels[currentLevel];
+    this.grid = lvl.grid;
+    this.pieceSize = lvl.pieceSize;
+    this.timeLeft = lvl.time;
+
+   
+    document.getElementById('timerText').textContent = "Уровень " + (currentLevel + 1) + " | Осталось " + this.timeLeft + " сек";
+
+    this.happy = game.add.audio('happy');
+    this.sad = game.add.audio('sad');
+    this.win = game.add.audio('win');
+
+    this.happy.volume = 0.2;
+    this.sad.volume = 0.1;
+    this.win.volume = 0.2;
+
+    game.stage.backgroundColor = '#2a1945';
+    game.scale.scaleMode = Phaser.ScaleManager.SHOW_ALL;
+    game.scale.pageAlignHorizontally = true;
+    game.scale.pageAlignVertically = true;
+
+ 
+    this.createPuzzleTexture();
+
+
+    game.time.events.repeat(Phaser.Timer.SECOND, this.timeLeft, this.refreshTime, this);
+
+   
+    this.showImagePreview();
+
+   
+    this.modal = game.add.group();
+    this.modal.visible = false;
+  };
+
+  this.createPuzzleTexture = function() {
+    var lvl = levels[currentLevel];
+    
+
+    var baseTexture = game.cache.getImage('puzzleImage');
+    var canvas = document.createElement('canvas');
+    var ctx = canvas.getContext('2d');
+    
+    var pieceSize = lvl.pieceSize;
+    var cols = lvl.grid;
+    var rows = lvl.grid;
+    
+
+    canvas.width = cols * pieceSize;
+    canvas.height = rows * pieceSize;
+    
+
+    ctx.drawImage(baseTexture, 0, 0, baseTexture.width, baseTexture.height, 0, 0, canvas.width, canvas.height);
+    
+ 
+    var texture = new Phaser.BitmapData(game, 'puzzleTexture', canvas.width, canvas.height);
+    texture.context.drawImage(canvas, 0, 0);
+    texture.dirty = true;
+    
+
+    game.cache.addBitmapData('puzzleTexture', texture);
+    
+
+    game.cache.addSpriteSheet('pintu', null, texture.canvas, pieceSize, pieceSize, cols * rows, 0, 0);
+    
+
+    sort = this.randomArr();
+    pintuGroup = game.add.group();
+
+    var startX = (game.width - pieceSize * this.grid) / 2;
+    var startY = (game.height - pieceSize * this.grid) / 2 + 40;
+
+    for (var i in sort) {
+      var item = pintuGroup.create(
+        startX + pieceSize * (i % this.grid),
+        startY + pieceSize * Math.floor(i / this.grid),
+        'pintu',
+        sort[i]
+      );
+
+      item.sort = sort[i];
+      item.nowSort = +i;
+      item.inputEnabled = true;
+      item.input.enableDrag();
+      item.input.enableSnap(pieceSize, pieceSize, false, true, startX, startY);
+      item.input.bringToTop = true;
+      item.events.onDragStart.add(this.dragStart, this);
+      item.events.onDragStop.add(this.dragStop, this);
+    }
+  };
+
+  this.showImagePreview = function() {
+    var oldPreview = document.getElementById('imagePreview');
+    if (oldPreview) {
+      oldPreview.remove();
+    }
+    
+
+    var previewContainer = document.createElement('div');
+    previewContainer.className = 'preview-container';
+    previewContainer.id = 'imagePreview';
+    
+
+    var previewImg = document.createElement('img');
+    previewImg.className = 'preview-image';
+    previewImg.src = currentImage;
+    
+
+    var previewText = document.createElement('p');
+    previewText.className = 'preview-text';
+    previewText.textContent = 'Уровень ' + (currentLevel + 1) + ': ' + this.grid + '×' + this.grid;
+    
+    previewContainer.appendChild(previewImg);
+    previewContainer.appendChild(previewText);
+    document.body.appendChild(previewContainer);
+  };
+
+  this.randomArr = function() {
+    var arr = [];
+    for (var i = 0; i < this.grid * this.grid; i++) arr.push(i);
+    var res = [];
+    while (arr.length > 0) res.push(arr.splice(Math.floor(Math.random() * arr.length), 1)[0]);
+    return res;
+  };
+
+  this.refreshTime = function() {
+    this.timeLeft--;
+    document.getElementById('timerText').textContent = "Уровень " + (currentLevel + 1) + " | Осталось " + this.timeLeft + " сек";
+    if (this.timeLeft === 0) {
+      this.showModal("⏰ Время вышло!", "Попробовать снова", function() {
+        game.state.start('main');
+      });
+    }
+  };
+
+  this.dragStart = function(sprite) {
+    if (allowDragStart) {
+      allowDragStart = false;
+      allowDragStop = true;
+      temPosition.x = sprite.position.x;
+      temPosition.y = sprite.position.y;
+    } else {
+      sprite.input.disableDrag();
+    }
+  };
+
+  this.dragStop = function(sprite) {
+    var t = this;
+    if (!allowDragStop) return;
+
+    allowDragStop = false;
+    var grid = this.grid;
+    var pieceSize = this.pieceSize;
+    var startX = (game.width - pieceSize * grid) / 2;
+    var startY = (game.height - pieceSize * grid) / 2 + 40;
+
+    var temX = (sprite.position.x - startX) / pieceSize;
+    var temY = (sprite.position.y - startY) / pieceSize;
+
+    if (temX < 0 || temX > grid - 1 || temY < 0 || temY > grid - 1) {
+      var temTween = game.add.tween(sprite).to({ x: temPosition.x, y: temPosition.y }, 300, Phaser.Easing.Quartic.Out, true);
+      temTween.onComplete.add(function() {
+        allowDragStart = true;
+        allowDragStop = false;
+        pintuGroup.setAll('input.draggable', true);
+      });
+      return;
+    }
+
+    var newSort = Math.round(temX) + Math.round(temY) * grid;
+
+    var moved = false;
+    pintuGroup.forEach(function(item) {
+      if (item.nowSort === newSort && !moved) {
+        moved = true;
+        item.bringToTop();
+        var tween = game.add.tween(item).to({ x: temPosition.x, y: temPosition.y }, 300, Phaser.Easing.Quartic.Out, true);
+        tween.onComplete.add(function() {
+          item.nowSort = sprite.nowSort;
+          sprite.nowSort = newSort;
+          allowDragStart = true;
+          allowDragStop = false;
+          pintuGroup.setAll('input.draggable', true);
+
+          if (t.checkSort()) {
+            t.win.play();
+            var nextAction = currentLevel < levels.length - 1 ? "Следующий уровень" : "Начать заново";
+            t.showModal("🎉 Победа!", nextAction, function() {
+              currentLevel++;
+              if (currentLevel >= levels.length) {
+                currentLevel = 0;
+
+                t.showModal("🏆 Все уровни пройдены!", "Играть сначала", function() {
+                  game.state.start('main');
+                });
+                return;
+              }
+              game.state.start('main');
+            });
+          } else {
+            console.log(1)
+            if (sprite.sort === sprite.nowSort) t.happy.play();
+            else t.sad.play();
+          }
+        });
+      }
+    });
+  };
+
+  this.checkSort = function() {
+    var ok = true;
+    pintuGroup.forEach(function(item) {
+      if (item.sort !== item.nowSort) ok = false;
+    });
+    return ok;
+  };
+
+  this.showModal = function(text, btnText, cb) {
+    var g = this.modal;
+    g.removeAll(true);
+    g.visible = true;
+
+    var bg = game.add.graphics(0, 0, g);
+    bg.beginFill(0x000000, 0.6);
+    bg.drawRect(0, 0, game.width, game.height);
+    bg.endFill();
+
+    var box = game.add.graphics(game.width / 2 - 200, game.height / 2 - 100, g);
+    box.beginFill(0xffffff);
+    box.drawRoundedRect(0, 0, 400, 200, 20);
+    box.endFill();
+
+    var txt = game.add.text(game.width / 2, game.height / 2 - 40, text, { font: "32px Arial", fill: "#000" });
+    txt.anchor.set(0.5);
+    g.add(txt);
+
+    var btn = game.add.text(game.width / 2, game.height / 2 + 40, btnText, { font: "28px Arial", fill: "#0077ff" });
+    btn.anchor.set(0.5);
+    btn.inputEnabled = true;
+    btn.events.onInputDown.add(cb);
+    g.add(btn);
+  };
+};
+
+game.state.add('main', game.States.main);
+game.state.start('main');
+
+document.getElementById('uploadInput').addEventListener('change', function(evt) {
+  var file = evt.target.files[0];
+  if (!file) return;
+  
+  if (!file.type.match('image.*')) {
+    alert('Пожалуйста, выберите файл изображения');
+    return;
+  }
+  
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    customImage = e.target.result;
+    currentImage = e.target.result; 
+    currentLevel = 0; 
+    game.state.start('main');
+  };
+  reader.readAsDataURL(file);
+});
+
+</script>
+</body>
+</html>

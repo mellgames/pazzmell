@@ -135,6 +135,8 @@ var currentLevel = 0;
 var customImage = null;
 var currentImage = 'assets/img/default-puzzle.jpg'; 
 
+var isMusicPlaying = false;
+
 var sort = [];
 var temPosition = {};
 var pintuGroup;
@@ -156,7 +158,9 @@ game.States.main = function() {
     game.load.audio('happy', 'assets/sound/happy.mp3');
     game.load.audio('sad', 'assets/sound/sad.mp3');
     game.load.audio('win', 'assets/sound/win.mp3');
-    game.load.audio('backgroundMusic', 'assets/sound/background.wav');
+
+      game.load.audio('backgroundMusic', 'assets/sound/background.wav');
+
   };
 
   this.create = function() {
@@ -171,10 +175,13 @@ game.States.main = function() {
     this.happy = game.add.audio('happy');
     this.sad = game.add.audio('sad');
     this.win = game.add.audio('win');
-    this.backgroundMusic = game.add.audio('backgroundMusic');
-    this.backgroundMusic.volume = 0.03; 
-    this.backgroundMusic.loop = true; 
-    this.backgroundMusic.play(); 
+
+    if (!isMusicPlaying) {
+      backgroundMusic = game.add.audio('backgroundMusic');
+    backgroundMusic.play()
+    backgroundMusic.volume= 0.03
+      isMusicPlaying = true;
+    }
 
     this.happy.volume = 0.2;
     this.sad.volume = 0.1;
